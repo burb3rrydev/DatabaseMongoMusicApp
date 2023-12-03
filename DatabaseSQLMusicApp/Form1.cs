@@ -1,4 +1,5 @@
-﻿using System;
+﻿using DatabaseMongoMusicApp;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -7,91 +8,107 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using DatabaseMongoMusicApp;
+using System.Diagnostics;
 
 namespace DatabaseSQLMusicApp
 {
     public partial class Form1 : Form
     {
-
         BindingSource albumBindingSource = new BindingSource();
         BindingSource tracksBindingSource = new BindingSource();
 
         List<Album> albums = new List<Album>();
+        AlbumDataBaseService albumDataBaseService = new AlbumDataBaseService(); // Assuming you have an AlbumDataService class
+
         public Form1()
         {
             InitializeComponent();
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        private void updateAlbumGrid()
         {
-            AlbumsDAO albumsDAO = new AlbumsDAO();
-
-            albumBindingSource.DataSource = albumsDAO.getAllAlbums();
+            albumBindingSource.DataSource = albumDataBaseService.getAll();
 
             dataGridView1.DataSource = albumBindingSource;
+        }
 
-            pictureBox1.Load("https://m.media-amazon.com/images/I/81-SFiRVerL._UF1000,1000_QL80_.jpg");
+        private void updateTrackGrid()
+        {
+            dataGridView2.DataSource = tracksBindingSource;
+        }
 
-            // Ensure that the sender is a DataGridView
-            if (sender is DataGridView dataGridView)
-            {
-                int rowClicked = dataGridView.CurrentRow.Index;
-
-                String imageURl = dataGridView1.Rows[rowClicked].Cells[4].Value.ToString();
-
-                pictureBox1.Load(imageURl);
-
-                tracksBindingSource.DataSource = albums[rowClicked].Tracks;
-
-                dataGridView2.DataSource = tracksBindingSource;
-            }
-
+        private void button1_Click(object sender, EventArgs e)
+        {
+            updateAlbumGrid();
         }
 
         private void button2_Click(object sender, EventArgs e)
         {
-            AlbumsDAO albumsDAO = new AlbumsDAO();
+            String searchTerm = textBox1.Text;
 
-            albumBindingSource.DataSource = albumsDAO.searchTitles(textBox1.Text);
+            List<Album> searchResults = albumDataBaseService.search(searchTerm);
 
             dataGridView1.DataSource = albumBindingSource;
+            albumBindingSource.DataSource = searchResults;
 
         }
 
         private void dataGridView1_CellClick(object sender, DataGridViewCellEventArgs e)
         {
 
-            AlbumsDAO albumsDAO = new AlbumsDAO();
+            DataGridView dataGridView = (DataGridView)sender;
 
-            int rowClicked = e.RowIndex;
+            // Row number refers to the position in the table
+            int rowNumber = dataGridView.CurrentCell.RowIndex;
 
-            if (rowClicked >= 0 && rowClicked < dataGridView1.Rows.Count)
+            // Item number is the id value of the Album object
+            string itemNumber = dataGridView.Rows[rowNumber].Cells[0].Value.ToString();
+
+            // Uncomment to test
+            MessageBox.Show(rowNumber.ToString() + " " + itemNumber);
+
+            updateTrackGridForAlbum(itemNumber);
+
+            // Load picture
+            try
             {
-                // Load album image
-                String imageURl = dataGridView1.Rows[rowClicked].Cells[4].Value.ToString();
-                pictureBox1.Load(imageURl);
-
-                // Load tracks for the selected album
-                int albumID = (int)dataGridView1.Rows[rowClicked].Cells[0].Value;
-                tracksBindingSource.DataSource = albumsDAO.getTracksForAlbum(albumID);
-                dataGridView2.DataSource = tracksBindingSource;
+                pictureBox1.Load(dataGridView.Rows[rowNumber].Cells[4].Value.ToString());
             }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+
         }
 
         private void button3_Click(object sender, EventArgs e)
         {
-            Album album = new Album
+            try
             {
-                AlbumName = tbAlbumName.Text,
-                ArtistName = tbArtist.Text,
-                Year = Int32.Parse(tbYear.Text),
-                ImageURL = tbImageURL.Text,
-                Description = tbDescription.Text,
-            };
+                // Create a new album using the contents of the text inputs
+                Album a = new Album
+                {
+                    AlbumName = tbAlbumName.Text,
+                    ArtistName = tbArtist.Text,
+                    Year = Int32.Parse(tbYear.Text),
+                    ImageURL = tbImageURL.Text,
+                    Description = tbDescription.Text,
+                    Tracks = new List<Track>() // Assuming Track is the type you want here
+                };
 
-            AlbumsDAO albums = new AlbumsDAO();
-            int result = AlbumsDAO.addOneAlbum(album);
-            MessageBox.Show(result + "new row(s) inserted");
+                // Add to the database
+                albumDataBaseService.addOne(a);
+
+                // Refresh the grid display
+                updateAlbumGrid();
+            }
+            catch (Exception ex)
+            {
+                // Display any errors when the previous code fails
+                MessageBox.Show(ex.Message);
+            }
+
         }
 
         private void dataGridView2_CellClick(object sender, DataGridViewCellEventArgs e)
@@ -107,7 +124,7 @@ namespace DatabaseSQLMusicApp
 
         private void button4_Click(object sender, EventArgs e)
         {
-            int rowClicked = dataGridView2.CurrentRow.Index;
+          /*  int rowClicked = dataGridView2.CurrentRow.Index;
             MessageBox.Show("You clicked row " + rowClicked);
             int trackID = (int)dataGridView2.Rows[rowClicked].Cells[0].Value;
             MessageBox.Show("ID of track " + trackID);
@@ -119,7 +136,17 @@ namespace DatabaseSQLMusicApp
             MessageBox.Show("Result " + result);
 
             dataGridView2.DataSource = null;
-            albums = albumsDao.getAllAlbums();
+            albums = albumsDao.getAllAlbums();*/
+        }
+
+        private void updateTrackGridForAlbum(string itemNumber)
+        {
+            Album album = albumDataBaseService.getOne(itemNumber);
+
+            tracksBindingSource.DataSource = album.Tracks;
+
+            dataGridView2.DataSource = tracksBindingSource;
+
         }
     }
 }

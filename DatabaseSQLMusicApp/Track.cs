@@ -1,8 +1,13 @@
-﻿namespace DatabaseSQLMusicApp
+﻿using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+
+namespace DatabaseMongoMusicApp
 {
     internal class Track
     {
-        public int ID { get; set; }
+        [BsonId]
+        [BsonRepresentation(BsonType.ObjectId)]
+        public string ID { get; set; }
 
         public string Name { get; set; }
 

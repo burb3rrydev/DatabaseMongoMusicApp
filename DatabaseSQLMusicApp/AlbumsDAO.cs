@@ -1,204 +1,77 @@
-﻿using MySql.Data.MySqlClient;
-using Newtonsoft.Json.Linq;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.Remoting.Messaging;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections.Generic;
+using MongoDB.Driver;
+using MongoDB.Bson;
 
-namespace DatabaseSQLMusicApp
+namespace DatabaseMongoMusicApp
 {
     internal class AlbumsDAO
     {
-        public List<Album> albums = new List<Album>();
+        private readonly IMongoDatabase _database;
+        private readonly IMongoCollection<Album> _albumCollection;
 
-        private string connectionString =
-            "datasource=localhost;port=3306;username=root;password=root;database=music2;";
-
-
-        public List<Album> getAllAlbums()
+        public AlbumsDAO(string connectionString)
         {
-            List<Album> returnThese = new List<Album>();
-
-            MySqlConnection connection = new MySqlConnection
-                (connectionString);
-            connection.Open();
-
-
-            MySqlCommand command = new MySqlCommand("SELECT ID, ALBUM_TITLE, ARTIST, YEAR, IMAGE_NAME, DESCRIPTION FROM ALBUMS", connection);
-
-            using (MySqlDataReader reader = command.ExecuteReader())
-            {
-                while (reader.Read())
-                {
-                    Album a = new Album
-                    {
-                        ID = reader.GetInt32(0),
-                        AlbumName = reader.GetString(1),
-                        ArtistName = reader.GetString(2),
-                        Year = reader.GetInt32(3),
-                        ImageURL = reader.GetString(4),
-                        Description = reader.GetString(5)
-                    };
-                    a.Tracks = getTracksForAlbum(a.ID);
-
-                    returnThese.Add(a);
-                }
-            }
-            connection.Close();
-
-            return returnThese;
+            var client = new MongoClient(connectionString);
+            _database = client.GetDatabase("musicDatabase");
+            _albumCollection = _database.GetCollection<Album>("albums");
         }
 
-
-        public List<Album> searchTitles(string searchTerm)
+        public List<Album> GetAllAlbums()
         {
-            List<Album> returnThese = new List<Album>();
-
-            MySqlConnection connection = new MySqlConnection(connectionString);
-            connection.Open();
-
-            String searchWildPhrase = "%" + searchTerm + "%";
-
-            MySqlCommand command = new MySqlCommand();
-            command.CommandText = "SELECT ID, ALBUM_TITLE, ARTIST, YEAR, IMAGE_NAME, DESCRIPTION FROM ALBUMS WHERE ALBUM_TITLE LIKE @search";
-            command.Parameters.AddWithValue("@search", searchWildPhrase);
-            command.Connection = connection;
-
-            using (MySqlDataReader reader = command.ExecuteReader())
-            {
-                while (reader.Read())
-                {
-                    Album a = new Album
-                    {
-                        ID = reader.GetInt32(0),
-                        AlbumName = reader.GetString(1),
-                        ArtistName = reader.GetString(2),
-                        Year = reader.GetInt32(3),
-                        ImageURL = reader.GetString(4),
-                        Description = reader.GetString(5)
-                    };
-                    returnThese.Add(a);
-                }
-            }
-
-
-            connection.Close();
-
-            return returnThese;
+            return _albumCollection.AsQueryable().ToList();
         }
 
-        internal static int addOneAlbum(Album album)
+        public List<Album> SearchTitles(string searchTerm)
         {
-            string connectionString =
-           "datasource=localhost;port=3306;username=root;password=root;database=music2;";
-            MySqlConnection connection = new MySqlConnection(connectionString);
-            connection.Open();
-
-            MySqlCommand command = new MySqlCommand("INSERT INTO `albums`(`ALBUM_TITLE`, `ARTIST`, `YEAR`, `IMAGE_NAME`, `DESCRIPTION`) VALUES (@albumtitle, @artist, @year, @imageURL, @description)", connection);
-
-            command.Parameters.AddWithValue("@albumtitle", album.AlbumName);
-
-            command.Parameters.AddWithValue("@artist", album.ArtistName);
-
-            command.Parameters.AddWithValue("@year", album.Year);
-
-            command.Parameters.AddWithValue("@imageURL", album.ImageURL);
-
-            command.Parameters.AddWithValue("@description", album.Description);
-
-            int newRows = command.ExecuteNonQuery();
-            connection.Close();
-
-            return newRows;
+            var filter = Builders<Album>.Filter.Regex("AlbumName", new BsonRegularExpression(searchTerm, "i"));
+            return _albumCollection.Find(filter).ToList();
         }
 
-        public List<Track> getTracksForAlbum(int albumID)
+        public int AddOneAlbum(Album album)
         {
-            // start with an empty list
-            List<Track> returnThese = new List<Track>();
-
-            // connect to the MySQL server
-            MySqlConnection connection = new MySqlConnection(connectionString);
-            connection.Open();
-
-            // define the SQL statement to fetch all tracks
-            MySqlCommand command = new MySqlCommand();
-            command.CommandText = "SELECT * FROM TRACKS WHERE albums_ID = @albumid";
-            command.Parameters.AddWithValue("@albumid", albumID);
-            command.Connection = connection;
-
-            using (MySqlDataReader reader = command.ExecuteReader())
-            {
-                while (reader.Read())
-                {
-                    Track t = new Track
-                    {
-                        ID = reader.GetInt32(0),
-                        Name = reader.GetString(1),
-                        Number = reader.GetInt32(2),
-                        VideoURL = reader.GetString(3),
-                        Lyrics = reader.GetString(4),
-                    };
-
-                    returnThese.Add(t);
-                }
-            }
-            connection.Close();
-
-            return returnThese;
+            _albumCollection.InsertOne(album);
+            return 1; // Assuming success
         }
 
-        public List<JObject> getTracksUsingJoin(int albumID)
+        public List<Track> GetTracksForAlbum(string albumID)
         {
-            // start with an empty list
-            List<JObject> returnThese = new List<JObject>();
-
-            // connect to the MySQL server
-            MySqlConnection connection = new MySqlConnection(connectionString);
-            connection.Open();
-
-            // define the SQL statement to fetch all tracks
-            MySqlCommand command = new MySqlCommand();
-            command.CommandText = "SELECT tracks.ID, albums.ALBUM_TITLE, `track_title`, `number`, `video_url`, `lyrics`, `albums_ID` FROM `tracks` JOIN albums ON albums_ID = albums.ID WHERE albums.ID = @albumid";
-            command.Parameters.AddWithValue("@albumid", albumID);
-            command.Connection = connection;
-
-            using (MySqlDataReader reader = command.ExecuteReader())
-            {
-                while (reader.Read())
-                {
-                    JObject newTrack = new JObject();
-
-                    for (int i = 0; i < reader.FieldCount; i++)
-                    {
-                        newTrack.Add(reader.GetName(i).ToString(), reader.GetValue(i).ToString());
-                    }
-                    returnThese.Add(newTrack);
-                }
-            }
-            connection.Close();
-
-            return returnThese; // Add this line
+            var filter = Builders<Track>.Filter.Eq("AlbumID", albumID);
+            var trackCollection = _database.GetCollection<Track>("tracks");
+            return trackCollection.Find(filter).ToList();
         }
 
-        internal int deleteTrack(int trackID)
+        public int AddTrackToAlbum(string albumID, Track track)
         {
-            AlbumsDAO albumsDAO = new AlbumsDAO();
-            MySqlConnection connection = new MySqlConnection(connectionString);
-            connection.Open();
+            var filter = Builders<Album>.Filter.Eq("_id", albumID);
+            var update = Builders<Album>.Update.Push("Tracks", track);
 
-            MySqlCommand command = new MySqlCommand("DELETE FROM tracks WHERE `tracks`.`ID` = @trackID;", connection);
+            // Initialize "Tracks" as an empty list if it's null
+            var options = new UpdateOptions { IsUpsert = true };
+            var arrayFilters = new List<ArrayFilterDefinition>();
+            arrayFilters.Add(new BsonDocumentArrayFilterDefinition<Album>(new BsonDocument("i.Tracks", new BsonDocument("$exists", false))));
+            options.ArrayFilters = arrayFilters;
 
-            command.Parameters.AddWithValue("@trackID", trackID);
-            connection.Close();
+            var result = _albumCollection.UpdateOne(filter, update, options);
 
-            AlbumsDAO albumsDao = new AlbumsDAO();
-
-            int result = albumsDao.deleteTrack(trackID);
-
-            return result;
+            return result.ModifiedCount > 0 ? 1 : 0; // Assuming success if at least one document is modified
         }
+
+        public int RemoveTrackFromAlbum(string albumID, string trackID)
+        {
+            var filter = Builders<Album>.Filter.Eq("_id", albumID);
+            var update = Builders<Album>.Update.PullFilter("Tracks", Builders<Track>.Filter.Eq("_id", trackID));
+
+            // Initialize "Tracks" as an empty list if it's null
+            var options = new UpdateOptions { IsUpsert = true };
+            var arrayFilters = new List<ArrayFilterDefinition>();
+            arrayFilters.Add(new BsonDocumentArrayFilterDefinition<Album>(new BsonDocument("i.Tracks", new BsonDocument("$exists", false))));
+            options.ArrayFilters = arrayFilters;
+
+            var result = _albumCollection.UpdateOne(filter, update, options);
+
+            return result.ModifiedCount > 0 ? 1 : 0; // Assuming success if at least one document is modified
+        }
+
     }
 }
+
